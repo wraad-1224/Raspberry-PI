@@ -415,7 +415,8 @@ def api_ai_status():
         "available": dust_analyzer.is_available,
         "classes": ["Clean", "Dusty"],
         "model_type": "Convolutional Neural Network (CNN)",
-        "runtime": "ONNX Runtime",
+        "runtime": "ONNX Runtime (Remote)",
+        "server_url": dust_analyzer.server_url,
         "last_result": dust_analyzer.get_last_result(),
     })
 
