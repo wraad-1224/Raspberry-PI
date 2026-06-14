@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="description" content="Intelligent Solar Panel Management System — Real-time monitoring dashboard with AI dust detection, solar tracking, and IoT integration.">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+
+    <title>Solar Panel Management System — Dashboard</title>
+
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☀️</text></svg>">
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="/static/css/style.css">
+
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- Toast Notification Container -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- Simulation Mode Banner (hidden by default, shown via JS) -->
+<div class="simulation-banner" id="simulation-banner" style="display: none;">
+    <span class="sim-icon">⚠️</span>
+    <span class="sim-text"><strong>Simulation Mode Active</strong> — Hardware not connected. Displaying simulated values.</span>
+</div>
+
+<div class="dashboard-container">
+
+    <!-- ============================================================
+         1. HEADER
+         ============================================================ -->
+    <header class="dashboard-header section-animate" id="dashboard-header">
+        <div class="header-left">
+            <div class="header-logo">
+                <div class="logo-icon">☀️</div>
+                <div>
+                    <h1 class="header-title">Intelligent Solar Panel Management System</h1>
+                    <p class="header-subtitle">AI &bull; IoT &bull; Machine Learning — Mechatronics Engineering</p>
+                </div>
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="header-info-item">
+                <span class="header-info-label">Date</span>
+                <span class="header-info-value" id="header-date">Loading...</span>
+            </div>
+            <div class="header-info-item">
+                <span class="header-info-label">Time</span>
+                <span class="header-info-value" id="header-time">--:--:--</span>
+            </div>
+            <div class="header-info-item">
+                <span class="header-info-label">Last Update</span>
+                <span class="header-info-value" id="header-last-update">--:--:--</span>
+            </div>
+            <div class="header-info-item">
+                <span class="header-info-label">System</span>
+                <span class="system-status-badge online" id="system-status-badge">
+                    <span class="metric-status"></span> System Online
+                </span>
+            </div>
+        </div>
+    </header>
+
+
+    <!-- ============================================================
+         2. ELECTRICAL MONITORING
+         ============================================================ -->
+    <section class="section-animate" id="section-electrical">
+        <div class="section-header">
+            <div class="section-icon electrical">⚡</div>
+            <h2 class="section-title">Electrical Monitoring</h2>
+            <span class="section-subtitle">Real-time solar panel readings</span>
+        </div>
+
+        <div class="metrics-grid">
+            <!-- Voltage -->
+            <div class="metric-card voltage" id="card-voltage">
+                <div class="metric-header">
+                    <div class="metric-icon">🔌</div>
+                    <div class="metric-status"></div>
+                </div>
+                <div class="metric-value-container">
+                    <span class="metric-value" id="metric-voltage-value">0.0</span>
+                    <span class="metric-unit">V</span>
+                </div>
+                <span class="metric-label">Voltage</span>
+                <div class="metric-trend flat" id="metric-voltage-trend">━ Stable</div>
+            </div>
+
+            <!-- Current -->
+            <div class="metric-card current" id="card-current">
+                <div class="metric-header">
+                    <div class="metric-icon">〰️</div>
+                    <div class="metric-status"></div>
+                </div>
+                <div class="metric-value-container">
+                    <span class="metric-value" id="metric-current-value">0.000</span>
+                    <span class="metric-unit">A</span>
+                </div>
+                <span class="metric-label">Current</span>
+                <div class="metric-trend flat" id="metric-current-trend">━ Stable</div>
+            </div>
+
+            <!-- Power -->
+            <div class="metric-card power" id="card-power">
+                <div class="metric-header">
+                    <div class="metric-icon">💡</div>
+                    <div class="metric-status"></div>
+                </div>
+                <div class="metric-value-container">
+                    <span class="metric-value" id="metric-power-value">0.00</span>
+                    <span class="metric-unit">W</span>
+                </div>
+                <span class="metric-label">Power</span>
+                <div class="metric-trend flat" id="metric-power-trend">━ Stable</div>
+            </div>
+
+            <!-- Energy -->
+            <div class="metric-card energy" id="card-energy">
+                <div class="metric-header">
+                    <div class="metric-icon">🔋</div>
+                    <div class="metric-status"></div>
+                </div>
+                <div class="metric-value-container">
+                    <span class="metric-value" id="metric-energy-value">0.00</span>
+                    <span class="metric-unit">Wh</span>
+                </div>
+                <span class="metric-label">Daily Energy</span>
+                <div class="metric-trend flat" id="metric-energy-trend">━ Stable</div>
+            </div>
+        </div>
+
+        <!-- UART Debug Panel -->
+        <div class="uart-debug-panel" id="uart-debug-panel">
+            <div class="uart-debug-header">
+                <span>📡 UART Communication</span>
+                <span class="uart-status-badge" id="uart-status-badge">Connected</span>
+            </div>
+            <div class="uart-debug-grid">
+                <div class="uart-debug-item">
+                    <span class="uart-debug-label">Last Packet</span>
+                    <span class="uart-debug-value" id="uart-last-packet">—</span>
+                </div>
+                <div class="uart-debug-item">
+                    <span class="uart-debug-label">Last Timestamp</span>
+                    <span class="uart-debug-value" id="uart-last-time">—</span>
+                </div>
+                <div class="uart-debug-item">
+                    <span class="uart-debug-label">Packets Received</span>
+                    <span class="uart-debug-value" id="uart-packet-count">0</span>
+                </div>
+                <div class="uart-debug-item">
+                    <span class="uart-debug-label">Port / Baud</span>
+                    <span class="uart-debug-value" id="uart-port-info">—</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+
+    <!-- ============================================================
+         3. REAL-TIME CHARTS
+         ============================================================ -->
+    <section class="section-animate" id="section-charts">
+        <div class="section-header">
+            <div class="section-icon charts">📊</div>
+            <h2 class="section-title">Real-Time Charts</h2>
+            <span class="section-subtitle">Auto-updating every 2 seconds</span>
+        </div>
+
+        <!-- Chart Controls -->
+        <div class="chart-controls" id="chart-controls">
+            <button class="btn btn-outline btn-sm" onclick="toggleChartUpdates()" id="btn-toggle-charts">
+                ⏸ Pause Updates
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="exportCSV()" id="btn-export-csv">
+                📥 Export CSV
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="exportChartPNG()" id="btn-export-png">
+                🖼️ Export PNG
+            </button>
+        </div>
+
+        <div class="charts-grid">
+            <!-- Voltage Chart -->
+            <div class="chart-card">
+                <div class="chart-card-header">
+                    <span class="chart-card-title">⚡ Voltage vs Time</span>
+                    <span class="chart-card-value" id="chart-voltage-value">0.0 V</span>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="chart-voltage"></canvas>
+                </div>
+            </div>
+
+            <!-- Current Chart -->
+            <div class="chart-card">
+                <div class="chart-card-header">
+                    <span class="chart-card-title">〰️ Current vs Time</span>
+                    <span class="chart-card-value" id="chart-current-value">0.000 A</span>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="chart-current"></canvas>
+                </div>
+            </div>
+
+            <!-- Power Chart -->
+            <div class="chart-card">
+                <div class="chart-card-header">
+                    <span class="chart-card-title">💡 Power vs Time</span>
+                    <span class="chart-card-value" id="chart-power-value">0.00 W</span>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="chart-power"></canvas>
+                </div>
+            </div>
+
+            <!-- Energy Chart -->
+            <div class="chart-card">
+                <div class="chart-card-header">
+                    <span class="chart-card-title">🔋 Energy vs Time</span>
+                    <span class="chart-card-value" id="chart-energy-value">0.00 Wh</span>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="chart-energy"></canvas>
+                </div>
+            </div>
+        </div>
+    </section>
+
+
+    <!-- ============================================================
+         4. SOLAR TRACKING
+         ============================================================ -->
+    <section class="section-animate" id="section-tracking">
+        <div class="section-header">
+            <div class="section-icon tracking">🌅</div>
+            <h2 class="section-title">Solar Tracking Control</h2>
+            <span class="section-subtitle" id="tracking-schedule">06:00 — 18:00</span>
+        </div>
+
+        <div class="tracking-layout">
+            <!-- Left: Status & Gauge -->
+            <div class="card">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-md);">
+                    <h3 style="font-size: 0.95rem; font-weight: 700;">Tracking Status</h3>
+                    <span class="tracking-badge active" id="tracking-status-badge">
+                        <span class="metric-status"></span> Tracking Active
+                    </span>
+                </div>
+
+                <!-- Servo Gauge -->
+                <div class="servo-gauge-container">
+                    <div class="servo-gauge">
+                        <div class="servo-gauge-bg"></div>
+                        <div class="servo-gauge-fill" id="servo-gauge-needle"></div>
+                        <div class="servo-gauge-center"></div>
+                    </div>
+                    <div class="servo-gauge-labels">
+                        <span>0°</span>
+                        <span>45°</span>
+                        <span>90°</span>
+                        <span>135°</span>
+                        <span>180°</span>
+                    </div>
+                    <div class="servo-angle-display" id="servo-angle-main">90.0°</div>
+                </div>
+
+                <!-- Status Grid -->
+                <div class="tracking-status-grid">
+                    <div class="tracking-stat">
+                        <span class="tracking-stat-label">Mode</span>
+                        <span class="tracking-stat-value" id="tracking-mode-display">Automatic</span>
+                    </div>
+                    <div class="tracking-stat">
+                        <span class="tracking-stat-label">Solar Time</span>
+                        <span class="tracking-stat-value highlight" id="tracking-solar-time">—</span>
+                    </div>
+                    <div class="tracking-stat">
+                        <span class="tracking-stat-label">Hour Angle</span>
+                        <span class="tracking-stat-value" id="tracking-hour-angle">—</span>
+                    </div>
+                    <div class="tracking-stat">
+                        <span class="tracking-stat-label">Interval</span>
+                        <span class="tracking-stat-value" id="tracking-interval-display">Every 1 min</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Controls -->
+            <div class="card">
+                <h3 style="font-size: 0.95rem; font-weight: 700; margin-bottom: var(--space-md);">Tracking Controls</h3>
+
+                <!-- Mode Toggle -->
+                <div class="mode-toggle" style="margin-bottom: var(--space-lg);">
+                    <button class="mode-toggle-btn active" id="mode-auto-btn" onclick="setTrackingMode('auto')">☀️ Automatic</button>
+                    <button class="mode-toggle-btn" id="mode-manual-btn" onclick="setTrackingMode('manual')">🎛️ Manual</button>
+                </div>
+
+                <!-- Servo Slider -->
+                <div class="servo-slider-container">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: var(--space-xs);">
+                        <span style="font-size: 0.75rem; color: var(--text-muted);">Servo Position</span>
+                        <span style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--accent-cyan);" id="servo-slider-value">90°</span>
+                    </div>
+                    <input type="range" class="servo-slider" id="servo-slider" min="0" max="180" value="90" step="1">
+                    <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+                        <span style="font-size: 0.65rem; color: var(--text-muted);">0° (East)</span>
+                        <span style="font-size: 0.65rem; color: var(--text-muted);">90° (South)</span>
+                        <span style="font-size: 0.65rem; color: var(--text-muted);">180° (West)</span>
+                    </div>
+                </div>
+
+                <!-- Manual Control Buttons -->
+                <div class="control-buttons" style="margin-bottom: var(--space-md);">
+                    <button class="btn btn-outline btn-sm" onclick="sendServoAction('left')" id="btn-move-left">◀ Move Left</button>
+                    <button class="btn btn-primary btn-sm" onclick="sendServoAction('center')" id="btn-center">⊙ Center</button>
+                    <button class="btn btn-outline btn-sm" onclick="sendServoAction('right')" id="btn-move-right">Move Right ▶</button>
+                </div>
+
+                <!-- Quick Positions -->
+                <div class="quick-positions">
+                    <button class="quick-pos-btn" onclick="sendServoAction('sunrise')" id="btn-sunrise">
+                        <span class="pos-icon">🌅</span>
+                        <span>Sunrise</span>
+                        <span class="pos-angle">0°</span>
+                    </button>
+                    <button class="quick-pos-btn" onclick="sendServoAction('noon')" id="btn-noon">
+                        <span class="pos-icon">☀️</span>
+                        <span>Noon</span>
+                        <span class="pos-angle">90°</span>
+                    </button>
+                    <button class="quick-pos-btn" onclick="sendServoAction('sunset')" id="btn-sunset">
+                        <span class="pos-icon">🌇</span>
+                        <span>Sunset</span>
+                        <span class="pos-angle">180°</span>
+                    </button>
+                </div>
+
+                <!-- Tracking Configuration -->
+                <div class="config-panel">
+                    <h4>⚙️ Tracking Configuration</h4>
+                    <div class="config-row">
+                        <div class="config-field">
+                            <label class="config-label" for="config-start-time">Start Time</label>
+                            <input type="time" class="config-input" id="config-start-time" value="06:00">
+                        </div>
+                        <div class="config-field">
+                            <label class="config-label" for="config-end-time">End Time</label>
+                            <input type="time" class="config-input" id="config-end-time" value="18:00">
+                        </div>
+                        <div class="config-field">
+                            <label class="config-label" for="config-interval">Interval (min)</label>
+                            <input type="number" class="config-input" id="config-interval" value="1" min="1" max="60">
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-sm" onclick="saveTrackingSettings()" id="btn-save-settings">💾 Save Settings</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+
+    <!-- ============================================================
+         5. AI DUST DETECTION
+         ============================================================ -->
+    <section class="section-animate" id="section-ai">
+        <div class="section-header">
+            <div class="section-icon ai">🤖</div>
+            <h2 class="section-title">AI Dust Detection</h2>
+            <span class="section-subtitle">CNN-based Clean/Dusty Classification</span>
+        </div>
+
+        <!-- AI Status Card -->
+        <div class="ai-status-card" id="ai-status-card">
+            <div class="ai-status-item">
+                <span class="ai-status-label">Model</span>
+                <span class="ai-status-value" id="ai-model-file">cnn_dust_model.pt</span>
+            </div>
+            <div class="ai-status-item">
+                <span class="ai-status-label">Inference Engine</span>
+                <span class="ai-status-value" id="ai-inference-script">run_dust_cnn.py</span>
+            </div>
+            <div class="ai-status-item">
+                <span class="ai-status-label">Architecture</span>
+                <span class="ai-status-value" id="ai-model-type">CNN</span>
+            </div>
+            <div class="ai-status-item">
+                <span class="ai-status-label">Status</span>
+                <span class="ai-status-value ai-online" id="ai-status-text">
+                    <span class="metric-status"></span> Online
+                </span>
+            </div>
+        </div>
+
+        <div class="ai-layout">
+            <!-- Left: Camera Preview -->
+            <div class="card">
+                <h3 style="font-size: 0.95rem; font-weight: 700; margin-bottom: var(--space-md);">📷 Camera Preview</h3>
+
+                <div class="camera-preview" id="camera-preview">
+                    <img id="camera-image" src="" alt="Solar Panel Camera Feed" style="display: none;">
+                    <div class="camera-placeholder" id="camera-placeholder">
+                        <span class="placeholder-icon">📷</span>
+                        <span class="placeholder-text">No image captured yet</span>
+                        <span style="font-size: 0.72rem; color: var(--text-muted);">Press "Capture Image" to start</span>
+                    </div>
+                </div>
+
+                <!-- Camera Metadata -->
+                <div class="camera-metadata" id="camera-metadata" style="display: none;">
+                    <span id="camera-meta-filename">—</span>
+                    <span id="camera-meta-timestamp">—</span>
+                    <span id="camera-meta-resolution">—</span>
+                </div>
+
+                <div class="camera-actions">
+                    <button class="btn btn-primary btn-lg" onclick="captureImage()" id="btn-capture">📸 Capture Image</button>
+                    <button class="btn btn-warning btn-lg" onclick="analyzeDust()" id="btn-analyze">🤖 Analyze Dust</button>
+                </div>
+            </div>
+
+            <!-- Right: Prediction Results -->
+            <div class="card">
+                <h3 style="font-size: 0.95rem; font-weight: 700; margin-bottom: var(--space-md);">🔬 Analysis Results</h3>
+
+                <div class="prediction-card">
+                    <!-- Prediction -->
+                    <div class="prediction-result" id="prediction-result-card">
+                        <div class="prediction-label">Prediction</div>
+                        <div class="prediction-value" id="prediction-value">—</div>
+                    </div>
+
+                    <!-- Confidence -->
+                    <div class="prediction-result">
+                        <div class="prediction-label">Confidence</div>
+                        <div class="confidence-text" id="confidence-text">—</div>
+                        <div class="confidence-bar-container">
+                            <div class="confidence-bar-bg">
+                                <div class="confidence-bar-fill" id="confidence-bar" style="width: 0%;"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recommendation -->
+                    <div class="recommendation-card">
+                        <div class="prediction-label">Recommendation</div>
+                        <div class="recommendation-text" id="recommendation-text">
+                            Capture and analyze an image to see results
+                        </div>
+                        <div class="analysis-timestamp" id="analysis-timestamp"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+
+    <!-- ============================================================
+         6. SYSTEM HEALTH
+         ============================================================ -->
+    <section class="section-animate" id="section-health">
+        <div class="section-header">
+            <div class="section-icon health">🏥</div>
+            <h2 class="section-title">System Health</h2>
+            <span class="section-subtitle">Component status overview</span>
+        </div>
+
+        <div class="health-grid">
+            <!-- ESP32 -->
+            <div class="health-item" id="health-esp32">
+                <div class="health-indicator online" id="health-esp32-indicator"></div>
+                <span class="health-name">ESP32</span>
+                <span class="health-detail" id="health-esp32-detail">Microcontroller</span>
+                <span class="health-status-text online" id="health-esp32-status">ONLINE</span>
+            </div>
+
+            <!-- UART -->
+            <div class="health-item" id="health-uart">
+                <div class="health-indicator online" id="health-uart-indicator"></div>
+                <span class="health-name">UART</span>
+                <span class="health-detail" id="health-uart-detail">Serial Comm</span>
+                <span class="health-status-text online" id="health-uart-status">ONLINE</span>
+            </div>
+
+            <!-- Raspberry Pi -->
+            <div class="health-item" id="health-raspberry-pi">
+                <div class="health-indicator online" id="health-raspberry_pi-indicator"></div>
+                <span class="health-name">Raspberry Pi</span>
+                <span class="health-detail" id="health-raspberry_pi-detail">Dashboard Host</span>
+                <span class="health-status-text online" id="health-raspberry_pi-status">ONLINE</span>
+            </div>
+
+            <!-- Camera -->
+            <div class="health-item" id="health-camera">
+                <div class="health-indicator online" id="health-camera-indicator"></div>
+                <span class="health-name">Camera</span>
+                <span class="health-detail" id="health-camera-detail">Pi Camera</span>
+                <span class="health-status-text online" id="health-camera-status">ONLINE</span>
+            </div>
+
+            <!-- AI Model -->
+            <div class="health-item" id="health-ai-model">
+                <div class="health-indicator online" id="health-ai_model-indicator"></div>
+                <span class="health-name">AI Model</span>
+                <span class="health-detail" id="health-ai_model-detail">CNN Detector</span>
+                <span class="health-status-text online" id="health-ai_model-status">ONLINE</span>
+            </div>
+
+            <!-- Dashboard -->
+            <div class="health-item" id="health-dashboard">
+                <div class="health-indicator online" id="health-dashboard-indicator"></div>
+                <span class="health-name">Dashboard</span>
+                <span class="health-detail" id="health-dashboard-detail">Flask Server</span>
+                <span class="health-status-text online" id="health-dashboard-status">ONLINE</span>
+            </div>
+        </div>
+    </section>
+
+
+    <!-- ============================================================
+         7. FOOTER
+         ============================================================ -->
+    <footer class="dashboard-footer section-animate">
+        <p>Intelligent Solar Panel Management System &mdash; Mechatronics Engineering Graduation Project &copy; 2026</p>
+        <p style="margin-top: 4px;">Powered by Raspberry Pi 3 &bull; Flask &bull; PyTorch &bull; Chart.js</p>
+    </footer>
+
+</div>
+
+<!-- Dashboard JavaScript -->
+<script src="/static/js/dashboard.js"></script>
+
+</body>
+</html>
