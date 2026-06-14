@@ -7,7 +7,7 @@
     Servo Angle:       θ_servo = H + 90
 
   Supports automatic mode (timed updates) and manual mode (user control).
-  Uses MG996R servo motor via RPi.GPIO PWM.
+  Sends servo commands to ESP32 via UART (ANGLE:<angle>\n).
 =============================================================================
 """
 
@@ -18,13 +18,13 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-# Try to import RPi.GPIO for servo control
+# Try to import serial for UART communication with ESP32
+UART_AVAILABLE = False
 try:
-    import RPi.GPIO as GPIO
-    GPIO_AVAILABLE = True
+    import serial
+    UART_AVAILABLE = True
 except ImportError:
-    GPIO_AVAILABLE = False
-    logger.warning("RPi.GPIO not available — servo in simulation mode")
+    logger.warning("pyserial not available — servo in simulation mode")
 
 
 class SolarTracker:
@@ -38,6 +38,9 @@ class SolarTracker:
     Manual Mode:
         Allows direct servo angle control via API.
 
+    Servo commands are sent to ESP32 via UART as:
+        ANGLE:<angle>\n
+
     Attributes:
         mode (str): "auto" or "manual"
         servo_angle (float): Current servo position (0°–180°)
@@ -50,12 +53,10 @@ class SolarTracker:
     SERVO_MIN = 0
     SERVO_MAX = 180
 
-    # PWM configuration for MG996R
-    SERVO_GPIO = 18       # Hardware PWM pin on Pi 3B
-    PWM_FREQ = 50         # 50 Hz (20ms period) — standard for servos
-    # Duty cycle mapping: 0° → 2.5%, 180° → 12.5%
-    DUTY_MIN = 2.5
-    DUTY_MAX = 12.5
+    # UART configuration for ESP32 communication
+    UART_PORT = "/dev/serial0"
+    UART_BAUD = 9600
+    UART_TIMEOUT = 1
 
     def __init__(self):
         # Tracking state
@@ -74,41 +75,40 @@ class SolarTracker:
         self._lock = threading.Lock()
         self._thread = None
         self._running = False
-        self._pwm = None
-        self._gpio_initialized = False
-        self._simulation = not GPIO_AVAILABLE
+        self._uart = None
+        self._simulation = not UART_AVAILABLE
 
-        # Initialize GPIO if available
-        if GPIO_AVAILABLE:
-            self._init_gpio()
+        # Initialize UART if available
+        if UART_AVAILABLE:
+            self._init_uart()
 
-    def _init_gpio(self):
-        """Initialize GPIO for servo PWM control."""
+    def _init_uart(self):
+        """Initialize UART serial connection to ESP32."""
         try:
-            GPIO.setmode(GPIO.BCM)
-            GPIO.setup(self.SERVO_GPIO, GPIO.OUT)
-            self._pwm = GPIO.PWM(self.SERVO_GPIO, self.PWM_FREQ)
-            self._pwm.start(0)
-            self._gpio_initialized = True
-            logger.info(f"Servo GPIO initialized on pin {self.SERVO_GPIO}")
+            self._uart = serial.Serial(
+                port=self.UART_PORT,
+                baudrate=self.UART_BAUD,
+                timeout=self.UART_TIMEOUT,
+            )
+            self._simulation = False
+            logger.info(f"UART initialized: {self.UART_PORT} @ {self.UART_BAUD} baud")
         except Exception as e:
+            self._uart = None
             self._simulation = True
-            logger.error(f"GPIO init failed: {e} — falling back to simulation")
-
-    def _angle_to_duty(self, angle):
-        """Convert servo angle (0°–180°) to PWM duty cycle."""
-        angle = max(self.SERVO_MIN, min(self.SERVO_MAX, angle))
-        return self.DUTY_MIN + (angle / 180.0) * (self.DUTY_MAX - self.DUTY_MIN)
+            logger.error(f"UART init failed: {e} — falling back to simulation")
 
     def _set_servo(self, angle):
-        """Move servo to the specified angle."""
+        """Move servo to the specified angle via UART command to ESP32."""
         angle = max(self.SERVO_MIN, min(self.SERVO_MAX, angle))
 
-        if self._gpio_initialized and self._pwm:
-            duty = self._angle_to_duty(angle)
-            self._pwm.ChangeDutyCycle(duty)
-            time.sleep(0.3)  # Allow servo to reach position
-            self._pwm.ChangeDutyCycle(0)  # Stop signal to prevent jitter
+        if self._uart and not self._simulation:
+            try:
+                command = f"ANGLE:{int(round(angle))}\n"
+                self._uart.write(command.encode("utf-8"))
+                self._uart.flush()
+                logger.debug(f"UART TX: {command.strip()}")
+            except Exception as e:
+                logger.error(f"UART write failed: {e}")
 
         with self._lock:
             self.servo_angle = round(angle, 1)
@@ -348,10 +348,11 @@ class SolarTracker:
         return f"{h:02d}:{m:02d}:{s:02d}"
 
     def cleanup(self):
-        """Clean up GPIO resources."""
+        """Clean up UART resources."""
         self.stop_tracking()
-        if self._pwm:
-            self._pwm.stop()
-        if self._gpio_initialized:
-            GPIO.cleanup()
+        if self._uart:
+            try:
+                self._uart.close()
+            except Exception:
+                pass
         logger.info("Tracking cleanup complete")
