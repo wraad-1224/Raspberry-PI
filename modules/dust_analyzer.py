@@ -2,11 +2,11 @@
 =============================================================================
   Dust Analyzer Module — AI Inference Wrapper
   ---------------------------------------------------------------------------
-  Wraps the existing run_dust_cnn.py script to provide structured JSON
-  results for the dashboard. Uses the existing cnn_dust_model.pt model.
+  Wraps the existing run_dust_onnx.py script to provide structured JSON
+  results for the dashboard. Uses the existing cnn_dust_model.onnx model.
   
   IMPORTANT: This module does NOT create or retrain any model.
-  It uses the existing model files as-is.
+  It uses the existing ONNX model exported from cnn_dust_model.pt.
 =============================================================================
 """
 
@@ -17,31 +17,31 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-# Add project root to path so we can import run_dust_cnn
+# Add project root to path so we can import run_dust_onnx
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-# Try to import the existing prediction function
+# Try to import the ONNX prediction function
 AI_AVAILABLE = False
 try:
-    from run_dust_cnn import predict_image
+    from run_dust_onnx import predict_image
     AI_AVAILABLE = True
-    logger.info("AI dust detection model loaded successfully")
+    logger.info("AI dust detection model loaded successfully (ONNX Runtime)")
 except ImportError as e:
-    logger.warning(f"Could not import run_dust_cnn: {e}")
+    logger.warning(f"Could not import run_dust_onnx: {e}")
 except Exception as e:
     logger.error(f"Error loading AI model: {e}")
 
 
 class DustAnalyzer:
     """
-    Wrapper around the existing CNN dust detection model.
+    Wrapper around the ONNX dust detection model.
 
     Uses:
-        - run_dust_cnn.py → predict_image() function
-        - cnn_dust_model.pt → trained PyTorch model
-        - cnn_classes.json → class labels ["Clean", "Dusty"]
+        - run_dust_onnx.py -> predict_image() function
+        - cnn_dust_model.onnx -> exported ONNX model
+        - cnn_classes.json -> class labels ["Clean", "Dusty"]
 
     Returns structured results with prediction, confidence,
     and actionable recommendation.
@@ -50,13 +50,13 @@ class DustAnalyzer:
     def __init__(self):
         self.available = AI_AVAILABLE
         self.last_result = None
-        self.model_path = os.path.join(PROJECT_ROOT, "cnn_dust_model.pt")
+        self.model_path = os.path.join(PROJECT_ROOT, "cnn_dust_model.onnx")
         self.classes_path = os.path.join(PROJECT_ROOT, "cnn_classes.json")
 
         # Verify model file exists
         if not os.path.exists(self.model_path):
             self.available = False
-            logger.error(f"Model file not found: {self.model_path}")
+            logger.error(f"ONNX model file not found: {self.model_path}")
 
     @property
     def is_available(self):
@@ -109,28 +109,18 @@ class DustAnalyzer:
                 "recommendation": "AI model is not available",
                 "timestamp": timestamp,
                 "image_path": image_path,
-                "message": "AI model not loaded — check run_dust_cnn.py and cnn_dust_model.pt",
+                "message": "AI model not loaded — check run_dust_onnx.py and cnn_dust_model.onnx",
             }
             self.last_result = result
             return result
 
         try:
-            # Redirect stdout during inference to prevent Unicode
-            # encoding errors from print statements in run_dust_cnn.py
-            # (the bar chart uses █ characters that crash cp1256 on Windows)
-            import io
-            old_stdout = sys.stdout
-            sys.stdout = io.TextIOWrapper(io.BytesIO(), encoding='utf-8')
-
-            try:
-                # Call the existing predict_image function
-                prediction, confidence = predict_image(
-                    image_path,
-                    model_path=self.model_path,
-                    classes_path=self.classes_path,
-                )
-            finally:
-                sys.stdout = old_stdout
+            # Call the ONNX predict_image function
+            prediction, confidence = predict_image(
+                image_path,
+                model_path=self.model_path,
+                classes_path=self.classes_path,
+            )
 
             # Generate recommendation based on prediction
             recommendation = self._get_recommendation(prediction, confidence)
