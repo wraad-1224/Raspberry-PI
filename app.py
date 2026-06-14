@@ -409,12 +409,13 @@ def api_ai_status():
         {model_file, inference_script, status, classes, available}
     """
     return jsonify({
-        "model_file": "cnn_dust_model.pt",
-        "inference_script": "run_dust_cnn.py",
+        "model_file": "cnn_dust_model.onnx",
+        "inference_script": "run_dust_onnx.py",
         "status": "Online" if dust_analyzer.is_available else "Offline",
         "available": dust_analyzer.is_available,
         "classes": ["Clean", "Dusty"],
         "model_type": "Convolutional Neural Network (CNN)",
+        "runtime": "ONNX Runtime",
         "last_result": dust_analyzer.get_last_result(),
     })
 
