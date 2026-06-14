@@ -1,71 +1,95 @@
 """
 =============================================================================
-  Dust Analyzer Module — AI Inference Wrapper
+  Dust Analyzer Module — Remote AI Inference
   ---------------------------------------------------------------------------
-  Wraps the existing run_dust_onnx.py script to provide structured JSON
-  results for the dashboard. Uses the existing cnn_dust_model.onnx model.
-  
-  IMPORTANT: This module does NOT create or retrain any model.
-  It uses the existing ONNX model exported from cnn_dust_model.pt.
+  Sends captured images to the AI server (Windows laptop) for dust
+  detection inference. The AI server runs ONNX Runtime with the
+  cnn_dust_model.onnx model.
+
+  IMPORTANT: This module does NOT run inference locally.
+  It sends images via HTTP to the remote AI server.
 =============================================================================
 """
 
 import os
 import sys
 import logging
+import requests
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-# Add project root to path so we can import run_dust_onnx
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
+# ============================================================
+# CONFIGURATION
+# ============================================================
+# AI Server URL — Change this to your Windows laptop's IP address
+# Example: "http://192.168.1.100:5001/predict"
+AI_SERVER_URL = "http://192.168.1.100:5001/predict"
 
-# Try to import the ONNX prediction function
-AI_AVAILABLE = False
-try:
-    from run_dust_onnx import predict_image
-    AI_AVAILABLE = True
-    logger.info("AI dust detection model loaded successfully (ONNX Runtime)")
-except ImportError as e:
-    logger.warning(f"Could not import run_dust_onnx: {e}")
-except Exception as e:
-    logger.error(f"Error loading AI model: {e}")
+# Connection timeout (seconds)
+AI_SERVER_TIMEOUT = 15
+
+# Project root for resolving image paths
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 class DustAnalyzer:
     """
-    Wrapper around the ONNX dust detection model.
+    Remote AI dust detection client.
 
-    Uses:
-        - run_dust_onnx.py -> predict_image() function
-        - cnn_dust_model.onnx -> exported ONNX model
-        - cnn_classes.json -> class labels ["Clean", "Dusty"]
+    Sends images to the AI server (Windows laptop) via HTTP POST
+    and receives prediction results as JSON.
+
+    Architecture:
+        Raspberry Pi (Dashboard) → HTTP POST → Windows Laptop (AI Server)
+        └── static/images/latest.jpg         └── run_dust_onnx.py
+                                              └── cnn_dust_model.onnx
 
     Returns structured results with prediction, confidence,
     and actionable recommendation.
     """
 
-    def __init__(self):
-        self.available = AI_AVAILABLE
+    def __init__(self, server_url=None):
+        self.server_url = server_url or AI_SERVER_URL
         self.last_result = None
-        self.model_path = os.path.join(PROJECT_ROOT, "cnn_dust_model.onnx")
-        self.classes_path = os.path.join(PROJECT_ROOT, "cnn_classes.json")
+        self._available = None  # None = not yet checked
 
-        # Verify model file exists
-        if not os.path.exists(self.model_path):
-            self.available = False
-            logger.error(f"ONNX model file not found: {self.model_path}")
+        # Check server connectivity on startup
+        self._check_server()
+
+    def _check_server(self):
+        """Check if the remote AI server is reachable."""
+        try:
+            # Try the health endpoint (GET /)
+            health_url = self.server_url.replace("/predict", "/")
+            resp = requests.get(health_url, timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                self._available = data.get("status") == "Online"
+                logger.info(
+                    f"AI server connected: {self.server_url} "
+                    f"(status: {data.get('status', 'unknown')})"
+                )
+            else:
+                self._available = False
+                logger.warning(f"AI server returned status {resp.status_code}")
+        except requests.ConnectionError:
+            self._available = False
+            logger.warning(f"AI server not reachable: {self.server_url}")
+        except Exception as e:
+            self._available = False
+            logger.warning(f"AI server check failed: {e}")
 
     @property
     def is_available(self):
-        """Check if AI model is available for inference."""
-        return self.available
+        """Check if AI server is available."""
+        if self._available is None:
+            self._check_server()
+        return self._available if self._available is not None else False
 
     def analyze(self, image_path):
         """
-        Run dust detection inference on an image.
+        Send image to remote AI server for dust detection.
 
         Args:
             image_path (str): Path to the image file to analyze.
@@ -74,7 +98,7 @@ class DustAnalyzer:
             dict: {
                 success: bool,
                 prediction: str ("Clean" or "Dusty"),
-                confidence: float (0.0–1.0),
+                confidence: float (0.0-1.0),
                 confidence_pct: str ("97.4%"),
                 recommendation: str,
                 timestamp: str (ISO format),
@@ -99,44 +123,90 @@ class DustAnalyzer:
             self.last_result = result
             return result
 
-        # Check if AI is available
-        if not self.available:
+        # Send image to AI server
+        try:
+            with open(image_path, "rb") as img_file:
+                files = {"image": ("latest.jpg", img_file, "image/jpeg")}
+                response = requests.post(
+                    self.server_url,
+                    files=files,
+                    timeout=AI_SERVER_TIMEOUT,
+                )
+
+            # Parse server response
+            if response.status_code == 200:
+                data = response.json()
+
+                if data.get("success"):
+                    prediction = data["prediction"]
+                    confidence = data["confidence"]
+
+                    # Generate recommendation locally (preserves existing logic)
+                    recommendation = self._get_recommendation(prediction, confidence)
+
+                    result = {
+                        "success": True,
+                        "prediction": prediction,
+                        "confidence": round(confidence, 4),
+                        "confidence_pct": data.get("confidence_pct", f"{confidence * 100:.1f}%"),
+                        "recommendation": recommendation,
+                        "timestamp": timestamp,
+                        "image_path": image_path,
+                        "message": f"Analysis complete — {prediction} ({confidence * 100:.1f}%)",
+                    }
+
+                    self._available = True
+                    logger.info(f"Dust analysis: {prediction} ({confidence * 100:.1f}%)")
+                else:
+                    # Server returned success=false
+                    result = {
+                        "success": False,
+                        "prediction": None,
+                        "confidence": 0.0,
+                        "confidence_pct": "0.0%",
+                        "recommendation": "AI server reported an error",
+                        "timestamp": timestamp,
+                        "image_path": image_path,
+                        "message": data.get("message", "Unknown server error"),
+                    }
+            else:
+                result = {
+                    "success": False,
+                    "prediction": None,
+                    "confidence": 0.0,
+                    "confidence_pct": "0.0%",
+                    "recommendation": "AI server error",
+                    "timestamp": timestamp,
+                    "image_path": image_path,
+                    "message": f"AI server returned HTTP {response.status_code}",
+                }
+
+        except requests.ConnectionError:
+            self._available = False
+            logger.error(f"AI server unavailable: {self.server_url}")
             result = {
                 "success": False,
                 "prediction": None,
                 "confidence": 0.0,
                 "confidence_pct": "0.0%",
-                "recommendation": "AI model is not available",
+                "recommendation": "AI server unavailable — check laptop connection",
                 "timestamp": timestamp,
                 "image_path": image_path,
-                "message": "AI model not loaded — check run_dust_onnx.py and cnn_dust_model.onnx",
+                "message": f"AI server unavailable: {self.server_url}",
             }
-            self.last_result = result
-            return result
 
-        try:
-            # Call the ONNX predict_image function
-            prediction, confidence = predict_image(
-                image_path,
-                model_path=self.model_path,
-                classes_path=self.classes_path,
-            )
-
-            # Generate recommendation based on prediction
-            recommendation = self._get_recommendation(prediction, confidence)
-
+        except requests.Timeout:
+            logger.error(f"AI server timeout after {AI_SERVER_TIMEOUT}s")
             result = {
-                "success": True,
-                "prediction": prediction,
-                "confidence": round(confidence, 4),
-                "confidence_pct": f"{confidence * 100:.1f}%",
-                "recommendation": recommendation,
+                "success": False,
+                "prediction": None,
+                "confidence": 0.0,
+                "confidence_pct": "0.0%",
+                "recommendation": "AI server timeout — try again",
                 "timestamp": timestamp,
                 "image_path": image_path,
-                "message": f"Analysis complete — {prediction} ({confidence * 100:.1f}%)",
+                "message": f"AI server timeout after {AI_SERVER_TIMEOUT} seconds",
             }
-
-            logger.info(f"Dust analysis: {prediction} ({confidence * 100:.1f}%)")
 
         except Exception as e:
             logger.error(f"Dust analysis failed: {e}")
